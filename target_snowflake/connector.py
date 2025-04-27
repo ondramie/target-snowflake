@@ -222,8 +222,20 @@ class SnowflakeConnector(SQLConnector):
             },
             "client_session_keep_alive": True,  # See https://github.com/snowflakedb/snowflake-connector-python/issues/218
         }
+        
+        # Add support for insecure_mode
+        if self.config.get("insecure_mode"):
+            self.logger.warning("OCSP certificate validation is disabled! This is insecure and not recommended for production.")
+            connect_args["insecure_mode"] = True
+            
+        # Add support for custom certificate paths
+        if self.config.get("ca_bundle_path"):
+            self.logger.info("Using custom CA bundle from: %s", self.config.get("ca_bundle_path"))
+            connect_args["ca_bundle_path"] = self.config.get("ca_bundle_path")
+            
         if self.auth_method == SnowflakeAuthMethod.KEY_PAIR:
             connect_args["private_key"] = self.get_private_key()
+            
         engine = sqlalchemy.create_engine(
             self.sqlalchemy_url,
             connect_args=connect_args,
