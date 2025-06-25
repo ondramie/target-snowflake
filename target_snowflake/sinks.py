@@ -20,6 +20,26 @@ from snowflake.sqlalchemy.snowdialect import SnowflakeDialect
 
 from target_snowflake.connector import SnowflakeConnector
 
+
+def fix_mysql_schema(schema: dict) -> dict:
+    """Remove tiny multipleOf values that break MySQL DECIMAL fields."""
+    # Threshold for filtering out problematic multipleOf constraints from MySQL DECIMAL fields
+    min_multiple_of_threshold = 1e-10
+
+    def clean(obj: dict | list | t.Any) -> dict | list | t.Any:  # noqa: ANN401
+        if isinstance(obj, dict):
+            return {
+                k: clean(v)
+                for k, v in obj.items()
+                if not (k == "multipleOf" and isinstance(v, (int, float)) and v < min_multiple_of_threshold)
+            }
+        if isinstance(obj, list):
+            return [clean(item) for item in obj]
+        return obj
+
+    return t.cast("dict", clean(schema))
+
+
 if t.TYPE_CHECKING:
     from singer_sdk import PluginBase
 
@@ -127,12 +147,15 @@ class SnowflakeSink(SQLSink[SnowflakeConnector]):
         Returns:
             True if table exists, False if not, None if unsure or undetectable.
         """
+        # Fix MySQL schema to prevent decimal errors
+        fixed_schema = fix_mysql_schema(schema)
+
         # prepare records for serialization
         processed_records = (
             conform_record_data_types(
                 stream_name=self.stream_name,
                 record=rcd,
-                schema=schema,
+                schema=fixed_schema,
                 level="RECURSIVE",
                 logger=self.logger,
             )
